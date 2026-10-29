@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\InvoiceController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/health', function () {
@@ -17,4 +18,8 @@ Route::prefix('auth')->name('auth.')->group(function (): void {
         Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
         Route::post('/refresh', [AuthController::class, 'refresh'])->name('refresh');
     });
+});
+
+Route::middleware('auth:api')->group(function (): void {
+    Route::post('/invoices', [InvoiceController::class, 'store'])->name('invoices.store');
 });

@@ -24,8 +24,8 @@ limited to five attempts per minute. Accounts must be assigned to a company;
 account provisioning is intentionally not exposed as a public registration API.
 
 Invoice view and update authorization is enforced by `InvoicePolicy`: users can
-only access invoices whose `company_id` matches their own. Invoice endpoints
-must use this policy when added.
+only access invoices whose `company_id` matches their own. Authenticated API
+requests derive company ownership from the JWT user, not from client input.
 
 Tubo is an electronic invoicing application built with a Laravel API, a React
 and TypeScript frontend, and SQLite for local development. The schema is also
@@ -88,6 +88,41 @@ returns `{"status":"ok"}`. Laravel's framework health endpoint is available at
   message; attempt numbers are unique within their invoice.
 - Monetary amounts use fixed-precision decimal columns. Invoice statuses are
   represented by backed enums in the application and stored as strings.
+
+### Create invoice API
+
+`POST /api/invoices` requires a JWT bearer token for a user assigned to a
+company. The request accepts invoice/customer information and one or more
+items; seller details come from the user's company. The server calculates line
+tax, subtotal, tax total, and grand total using decimal arithmetic, rounding
+each line amount to two decimal places with half-up rounding. Client-provided
+company, seller, status, and calculated amount fields are rejected.
+
+Example request:
+
+```json
+{
+  "invoice_number": "INV-10001",
+  "invoice_date": "2026-10-29",
+  "customer_name": "Customer One",
+  "customer_tax_id": "CUST-456",
+  "customer_email": "customer@example.com",
+  "currency": "USD",
+  "items": [
+    {
+      "description": "Consulting",
+      "quantity": "2",
+      "unit_price": "12.3456",
+      "tax_rate": "10"
+    }
+  ]
+}
+```
+
+Invoice number uniqueness is enforced by the database for each company. If
+simultaneous requests race to create the same invoice number, the unique
+constraint allows only one transaction to succeed; the other receives HTTP
+`409 Conflict`. Invalid request or calculated amount values return `422`.
 
 ### Frontend
 
