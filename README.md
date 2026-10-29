@@ -189,8 +189,15 @@ In a second terminal from the repository root:
 ```powershell
 cd frontend
 npm install
+Copy-Item .env.example .env
 npm run dev
 ```
+
+Set `VITE_API_BASE_URL` in `frontend/.env` to the Laravel API URL (the default
+example is `http://127.0.0.1:8000/api`). The frontend provides a sign-in screen
+for provisioned company accounts; public registration is not available. JWTs
+are kept in session storage and protected API requests send them as bearer
+tokens. Start the backend and queue worker before creating invoices.
 
 Vite prints the local frontend URL when the development server starts.
 
