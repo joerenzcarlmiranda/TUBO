@@ -18,6 +18,6 @@ readonly class GovernmentInvoiceResponse
     {
         return $this->statusCode === 408
             || $this->statusCode === 429
-            || $this->statusCode >= 500;
+            || ($this->statusCode >= 500 && $this->statusCode < 600);
     }
 }
