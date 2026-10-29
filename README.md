@@ -1,5 +1,32 @@
 # Tubo
 
+## API authentication
+
+The API uses short-lived JWT bearer tokens. Install backend dependencies, then
+generate a private signing secret for the local environment:
+
+```powershell
+cd backend
+composer install
+php artisan jwt:secret
+```
+
+Keep `JWT_SECRET` in the untracked `backend/.env`; never commit the generated
+secret. `JWT_TTL` controls token lifetime in minutes.
+
+- `POST /api/auth/login` — exchange `email` and `password` for a bearer token.
+- `GET /api/auth/me` — return the authenticated user's basic profile.
+- `POST /api/auth/refresh` — refresh a valid bearer token.
+- `POST /api/auth/logout` — invalidate the current bearer token.
+
+Send protected requests with `Authorization: Bearer <access_token>`. Login is
+limited to five attempts per minute. Accounts must be assigned to a company;
+account provisioning is intentionally not exposed as a public registration API.
+
+Invoice view and update authorization is enforced by `InvoicePolicy`: users can
+only access invoices whose `company_id` matches their own. Invoice endpoints
+must use this policy when added.
+
 Tubo is an electronic invoicing application built with a Laravel API, a React
 and TypeScript frontend, and SQLite for local development. The schema is also
 designed to run on MySQL.
