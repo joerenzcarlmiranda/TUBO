@@ -3,6 +3,7 @@
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\InvoiceController;
 use App\Http\Controllers\Api\InvoiceReadController;
+use App\Http\Controllers\Api\InvoiceRetryController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/health', function () {
@@ -28,4 +29,5 @@ Route::middleware('auth:api')->group(function (): void {
 Route::prefix('v1')->name('v1.')->middleware('auth:api')->group(function (): void {
     Route::get('/invoices', [InvoiceReadController::class, 'index'])->name('invoices.index');
     Route::get('/invoices/{invoice}', [InvoiceReadController::class, 'show'])->name('invoices.show');
+    Route::post('/invoices/{invoice}/retry', InvoiceRetryController::class)->name('invoices.retry');
 });
