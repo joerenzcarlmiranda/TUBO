@@ -1,13 +1,15 @@
 # Tubo
 
 Tubo is an electronic invoicing application built with a Laravel API, a React
-and TypeScript frontend, and MySQL.
+and TypeScript frontend, and SQLite for local development. The schema is also
+designed to run on MySQL.
 
 ## Requirements
 
 - PHP 8.2 or newer and Composer
 - Node.js and npm
-- MySQL 8.0 or newer
+- SQLite (included with PHP) for local development
+- MySQL 8.0 or newer when switching the backend environment
 
 ## Local setup
 
@@ -22,14 +24,20 @@ if (-not (Test-Path .env)) { Copy-Item .env.example .env }
 php artisan key:generate
 ```
 
-Create the MySQL database before starting the API:
+Create the SQLite database file and run the migrations:
 
-```sql
-CREATE DATABASE tubo CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+```powershell
+if (-not (Test-Path database\database.sqlite)) {
+    New-Item -ItemType File -Path database\database.sqlite | Out-Null
+}
+php artisan migrate
 ```
 
-Update the `DB_*` values in `backend/.env` to match your local MySQL
-credentials. Start the Laravel development server:
+The SQLite connection is configured in `backend/.env.example`. When MySQL is
+ready, change `DB_CONNECTION` to `mysql`, set the `DB_*` connection values, and
+create the database before running `php artisan migrate`.
+
+Start the API:
 
 ```powershell
 php artisan serve
@@ -38,6 +46,21 @@ php artisan serve
 The API health check is available at `http://127.0.0.1:8000/api/health` and
 returns `{"status":"ok"}`. Laravel's framework health endpoint is available at
 `http://127.0.0.1:8000/up`.
+
+### Database design
+
+- A company can have multiple users and invoices. A user's company association
+  is nullable to support existing accounts during setup; application access
+  should be limited to users with an assigned company.
+- Invoices retain seller and customer details as snapshots, so company profile
+  changes do not rewrite previously issued invoices.
+- Invoice numbers are unique within each company, enforced by a composite
+  database constraint. The same number can be used by a different company.
+- Invoice items and processing attempts belong to an invoice. Attempt records
+  retain their status, start/end times, HTTP response details, and error
+  message; attempt numbers are unique within their invoice.
+- Monetary amounts use fixed-precision decimal columns. Invoice statuses are
+  represented by backed enums in the application and stored as strings.
 
 ### Frontend
 
