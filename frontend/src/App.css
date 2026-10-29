@@ -1,0 +1,31 @@
+.app {
+  width: min(100% - 3rem, 48rem);
+  margin: 0 auto;
+  padding: 8rem 0;
+}
+
+.app__eyebrow {
+  margin: 0 0 1rem;
+  color: #2563eb;
+  font-size: 0.875rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.app h1 {
+  max-width: 40rem;
+  margin: 0;
+  color: #111827;
+  font-size: clamp(2.5rem, 8vw, 4rem);
+  letter-spacing: -0.05em;
+  line-height: 1.05;
+}
+
+.app__description {
+  max-width: 36rem;
+  margin-top: 1.5rem;
+  color: #4b5563;
+  font-size: 1.125rem;
+  line-height: 1.7;
+}
