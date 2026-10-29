@@ -225,7 +225,7 @@ function LoginScreen({
                 className="h-11"
               />
             </div>
-            <Button className="h-11 w-full" disabled={submitting}>
+            <Button type="submit" className="h-11 w-full" disabled={submitting}>
               {submitting && <LoaderCircle className="animate-spin" />}
               Sign in
               {!submitting && <ArrowRight className="ml-auto" />}

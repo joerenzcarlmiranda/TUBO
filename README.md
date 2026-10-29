@@ -201,6 +201,27 @@ tokens. Start the backend and queue worker before creating invoices.
 
 Vite prints the local frontend URL when the development server starts.
 
+### Automated tests and checks
+
+Run the Laravel backend suite from `backend/`:
+
+```powershell
+php artisan test
+```
+
+Run frontend component/API tests and quality checks from `frontend/`:
+
+```powershell
+npm test
+npm run lint
+npm run build
+```
+
+Frontend tests use Vitest and Testing Library with mocked API responses, so they
+do not require the Laravel server or queue worker. The backend suite covers
+authentication, invoice authorization and validation, invoice reads, and async
+submission/retry behavior.
+
 ## Project structure
 
 - `backend/` — Laravel application and REST API
