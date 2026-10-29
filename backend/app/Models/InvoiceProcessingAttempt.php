@@ -31,4 +31,13 @@ class InvoiceProcessingAttempt extends Model
     {
         return $this->belongsTo(Invoice::class);
     }
+
+    public function canBeRetried(): bool
+    {
+        return $this->status === InvoiceProcessingAttemptStatus::Failed
+            && ($this->http_status_code === null
+                || $this->http_status_code === 408
+                || $this->http_status_code === 429
+                || $this->http_status_code >= 500);
+    }
 }

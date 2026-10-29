@@ -147,6 +147,21 @@ To use the HTTP gateway instead, configure `GOVERNMENT_API_MOCK=false` and set
 `Idempotency-Key`; the remote service must honor that key to guarantee that a
 successful request retried after a worker crash does not create a duplicate.
 
+Invoices that end in `failed` can be manually retried with:
+
+```text
+POST /api/v1/invoices/{id}/retry
+```
+
+The endpoint requires a JWT bearer token from the invoice's company. It
+responds with `202 Accepted` when a retry is queued. Only a failed invoice
+whose latest attempt ended in a connection/timeout error, HTTP 408, 429, or
+5xx is eligible; permanent 4xx rejections return `409 Conflict` and must be
+corrected rather than resubmitted. The status transition is made under a
+database lock, so repeated or concurrent retry requests cannot queue multiple
+retries. Every run appends a numbered attempt record rather than replacing
+previous attempts.
+
 ### Versioned invoice read API
 
 The versioned read endpoints require a JWT bearer token:

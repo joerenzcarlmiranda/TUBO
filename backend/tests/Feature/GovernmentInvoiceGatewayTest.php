@@ -36,6 +36,33 @@ class GovernmentInvoiceGatewayTest extends TestCase
             && $request['invoice_number'] === $invoice->invoice_number);
     }
 
+    public function test_repeated_http_submission_uses_the_same_idempotency_key(): void
+    {
+        Http::fake([
+            'government.example.test/government-api/invoices' => Http::response(
+                ['status' => 'accepted'],
+                200,
+            ),
+        ]);
+        $invoice = $this->createInvoice();
+        $gateway = new HttpGovernmentInvoiceGateway;
+
+        $gateway->submit($invoice);
+        $gateway->submit($invoice);
+
+        $requests = Http::recorded()->pluck(0);
+
+        $this->assertCount(2, $requests);
+        $this->assertSame(
+            'tubo-invoice-'.$invoice->id,
+            $requests[0]->header('Idempotency-Key')[0],
+        );
+        $this->assertSame(
+            $requests[0]->header('Idempotency-Key'),
+            $requests[1]->header('Idempotency-Key'),
+        );
+    }
+
     public function test_mock_gateway_can_simulate_configured_outcomes(): void
     {
         $invoice = $this->createInvoice();

@@ -17,4 +17,9 @@ class InvoicePolicy
     {
         return $this->view($user, $invoice);
     }
+
+    public function retry(User $user, Invoice $invoice): bool
+    {
+        return $this->view($user, $invoice);
+    }
 }
