@@ -3,6 +3,7 @@
 namespace App\Http\Resources;
 
 use App\Models\InvoiceItem;
+use App\Models\InvoiceProcessingAttempt;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -40,6 +41,19 @@ class InvoiceResource extends JsonResource
                     'tax_amount' => $item->tax_amount,
                     'line_total' => $item->line_total,
                 ])->values(),
+            ),
+            'processing_attempts' => $this->whenLoaded(
+                'processingAttempts',
+                fn () => $this->processingAttempts
+                    ->map(fn (InvoiceProcessingAttempt $attempt): array => [
+                        'attempt_number' => $attempt->attempt_number,
+                        'status' => $attempt->status->value,
+                        'started_at' => $attempt->started_at,
+                        'finished_at' => $attempt->finished_at,
+                        'http_status_code' => $attempt->http_status_code,
+                        'error_message' => $attempt->error_message,
+                    ])
+                    ->values(),
             ),
             'created_at' => $this->created_at,
         ];
