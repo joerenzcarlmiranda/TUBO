@@ -6,6 +6,7 @@ use App\Enums\InvoiceStatus;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\StoreInvoiceRequest;
 use App\Http\Resources\InvoiceResource;
+use App\Jobs\ProcessInvoiceSubmission;
 use App\Models\Company;
 use App\Models\Invoice;
 use App\Models\User;
@@ -61,9 +62,11 @@ class InvoiceController extends Controller
             ], 409);
         }
 
+        ProcessInvoiceSubmission::dispatch($invoice->id)->afterCommit();
+
         return (new InvoiceResource($invoice))
             ->response()
-            ->setStatusCode(201);
+            ->setStatusCode(202);
     }
 
     private function isInvoiceNumberConflict(QueryException $exception): bool

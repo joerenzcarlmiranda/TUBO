@@ -35,4 +35,12 @@ return [
         ],
     ],
 
+    'government' => [
+        'mock' => env('GOVERNMENT_API_MOCK', true),
+        'mock_outcome' => env('GOVERNMENT_API_MOCK_OUTCOME', 'random'),
+        'url' => env('GOVERNMENT_API_URL', 'https://government.example.test/government-api'),
+        'timeout' => (int) env('GOVERNMENT_API_TIMEOUT', 30),
+        'processing_lease_seconds' => (int) env('GOVERNMENT_PROCESSING_LEASE_SECONDS', 60),
+    ],
+
 ];

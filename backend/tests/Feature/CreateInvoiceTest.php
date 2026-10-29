@@ -3,10 +3,12 @@
 namespace Tests\Feature;
 
 use App\Enums\InvoiceStatus;
+use App\Jobs\ProcessInvoiceSubmission;
 use App\Models\Company;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Testing\TestResponse;
 use Tests\TestCase;
 use Tymon\JWTAuth\Facades\JWTAuth;
@@ -20,6 +22,7 @@ class CreateInvoiceTest extends TestCase
         parent::setUp();
 
         config(['jwt.secret' => 'test-only-jwt-secret-for-feature-tests']);
+        Queue::fake();
     }
 
     public function test_authenticated_company_user_can_create_invoice_with_server_calculated_totals(): void
@@ -54,7 +57,7 @@ class CreateInvoiceTest extends TestCase
         ]);
 
         $response
-            ->assertCreated()
+            ->assertAccepted()
             ->assertJsonPath('data.invoice_number', 'INV-10001')
             ->assertJsonPath('data.seller.name', 'ABC Corporation')
             ->assertJsonPath('data.seller.tax_id', 'ABC-123')
@@ -78,6 +81,11 @@ class CreateInvoiceTest extends TestCase
             'total_amount' => '32.16',
         ]);
         $this->assertDatabaseCount('invoice_items', 2);
+        Queue::assertPushed(
+            ProcessInvoiceSubmission::class,
+            fn (ProcessInvoiceSubmission $job): bool => $job->invoiceId === $response->json('data.id')
+                && $job->afterCommit === true,
+        );
     }
 
     public function test_database_unique_constraint_returns_conflict_for_duplicate_invoice(): void
@@ -86,7 +94,7 @@ class CreateInvoiceTest extends TestCase
         $token = $this->authenticate($this->createCompanyUser($company));
         $payload = $this->validPayload('INV-10001');
 
-        $this->postInvoice($token, $payload)->assertCreated();
+        $this->postInvoice($token, $payload)->assertAccepted();
 
         $this->postInvoice($token, $payload)
             ->assertConflict()
