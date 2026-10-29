@@ -4,6 +4,9 @@ namespace App\Providers;
 
 use App\Models\Invoice;
 use App\Policies\InvoicePolicy;
+use App\Services\GovernmentInvoiceGateway;
+use App\Services\HttpGovernmentInvoiceGateway;
+use App\Services\MockGovernmentInvoiceGateway;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
 
@@ -14,7 +17,12 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        $this->app->bind(
+            GovernmentInvoiceGateway::class,
+            config('services.government.mock', true)
+                ? MockGovernmentInvoiceGateway::class
+                : HttpGovernmentInvoiceGateway::class,
+        );
     }
 
     /**

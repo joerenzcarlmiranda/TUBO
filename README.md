@@ -124,6 +124,29 @@ simultaneous requests race to create the same invoice number, the unique
 constraint allows only one transaction to succeed; the other receives HTTP
 `409 Conflict`. Invalid request or calculated amount values return `422`.
 
+### Asynchronous government submission
+
+Creating an invoice stores it as `pending` and returns `202 Accepted`. The API
+then dispatches a unique queue job after the database transaction commits.
+Run a worker from `backend/` to process queued submissions:
+
+```powershell
+php artisan queue:work database --tries=3 --timeout=40
+```
+
+The local government gateway is mocked by default. `GOVERNMENT_API_MOCK_OUTCOME`
+can be set to `success`, `temporary_failure`, `invalid`, or `timeout`; `random`
+chooses among those outcomes. A success marks the invoice `submitted`, a
+permanent HTTP 4xx rejection marks it `failed`, and a timeout, HTTP 408, 429, or
+5xx response is retried up to three times with 30- and 120-second backoff.
+Each run is recorded as a separate processing attempt. If a worker crashes,
+the next run recovers an attempt whose 60-second processing lease has expired.
+
+To use the HTTP gateway instead, configure `GOVERNMENT_API_MOCK=false` and set
+`GOVERNMENT_API_URL`. The gateway sends a stable invoice-based
+`Idempotency-Key`; the remote service must honor that key to guarantee that a
+successful request retried after a worker crash does not create a duplicate.
+
 ### Versioned invoice read API
 
 The versioned read endpoints require a JWT bearer token:
