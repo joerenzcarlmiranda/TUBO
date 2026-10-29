@@ -124,6 +124,26 @@ simultaneous requests race to create the same invoice number, the unique
 constraint allows only one transaction to succeed; the other receives HTTP
 `409 Conflict`. Invalid request or calculated amount values return `422`.
 
+### Versioned invoice read API
+
+The versioned read endpoints require a JWT bearer token:
+
+- `GET /api/v1/invoices` — return the authenticated company's invoices,
+  newest first, with pagination metadata and links.
+- `GET /api/v1/invoices/{id}` — return one invoice with its items and
+  processing-attempt history.
+
+The invoice list accepts optional `status`, exact `invoice_number`,
+`invoice_date_from`, and `invoice_date_to` filters. Dates use `YYYY-MM-DD`.
+Pagination uses `page` and `per_page`; the default page size is 15 and the
+maximum is 100. Invalid filters return `422`. Both endpoints are scoped to the
+authenticated user's company; attempting to view another company's invoice
+returns `403`.
+
+The detail response includes each processing attempt's number, status, start
+and finish times, HTTP status, and error message. Raw external response bodies
+are not exposed.
+
 ### Frontend
 
 In a second terminal from the repository root:

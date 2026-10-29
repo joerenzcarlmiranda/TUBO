@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\InvoiceController;
+use App\Http\Controllers\Api\InvoiceReadController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/health', function () {
@@ -22,4 +23,9 @@ Route::prefix('auth')->name('auth.')->group(function (): void {
 
 Route::middleware('auth:api')->group(function (): void {
     Route::post('/invoices', [InvoiceController::class, 'store'])->name('invoices.store');
+});
+
+Route::prefix('v1')->name('v1.')->middleware('auth:api')->group(function (): void {
+    Route::get('/invoices', [InvoiceReadController::class, 'index'])->name('invoices.index');
+    Route::get('/invoices/{invoice}', [InvoiceReadController::class, 'show'])->name('invoices.show');
 });
