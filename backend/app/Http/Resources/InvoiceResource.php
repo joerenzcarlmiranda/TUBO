@@ -55,6 +55,31 @@ class InvoiceResource extends JsonResource
                     ])
                     ->values(),
             ),
+            'retry_available_at' => $this->whenLoaded(
+                'processingAttempts',
+                function (): ?string {
+                    if ($this->status->value !== 'failed') {
+                        return null;
+                    }
+
+                    /** @var InvoiceProcessingAttempt|null $latestAttempt */
+                    $latestAttempt = $this->processingAttempts->last();
+
+                    if ($latestAttempt === null || ! $latestAttempt->canBeRetried()) {
+                        return null;
+                    }
+
+                    $cooldownMinutes = (int) config(
+                        'services.government.manual_retry_cooldown_minutes',
+                        5,
+                    );
+
+                    return ($latestAttempt->finished_at ?? $latestAttempt->started_at)
+                        ->copy()
+                        ->addMinutes($cooldownMinutes)
+                        ->toIso8601String();
+                },
+            ),
             'created_at' => $this->created_at,
         ];
     }

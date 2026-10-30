@@ -10,13 +10,18 @@ import {
   ArrowLeft,
   ArrowRight,
   BadgeCheck,
+  CircleCheck,
   CircleAlert,
+  CircleX,
+  Clock3,
+  Eye,
   FilePlus2,
   FileText,
   Filter,
   LoaderCircle,
   LogOut,
   Plus,
+  RefreshCw,
   Search,
   Trash2,
   WalletCards,
@@ -48,7 +53,16 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { ApiError, api, type CreateInvoiceInput, type Invoice, type InvoiceFilters, type InvoiceItemInput, type InvoicePage } from '@/lib/api'
+import {
+  ApiError,
+  api,
+  type CreateInvoiceInput,
+  type Invoice,
+  type InvoiceDetail,
+  type InvoiceFilters,
+  type InvoiceItemInput,
+  type InvoicePage,
+} from '@/lib/api'
 
 const emptyFilters: InvoiceFilters = {
   status: '',
@@ -106,6 +120,45 @@ function formatDate(value: string): string {
     : new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(date)
 }
 
+function formatDateTime(value: string | null): string {
+  if (!value) return 'In progress'
+  const date = new Date(value)
+  return Number.isNaN(date.getTime())
+    ? value
+    : new Intl.DateTimeFormat(undefined, {
+        dateStyle: 'medium',
+        timeStyle: 'short',
+      }).format(date)
+}
+
+function statusMessage(status: Invoice['status']): string {
+  switch (status) {
+    case 'pending':
+      return 'Queued and waiting for submission.'
+    case 'processing':
+      return 'The invoice is being submitted to the government service.'
+    case 'submitted':
+      return 'Successfully submitted to the government service.'
+    case 'failed':
+      return 'Submission failed. Review the attempt history for details.'
+  }
+}
+
+function canRetryInvoice(invoice: InvoiceDetail): boolean {
+  if (invoice.status !== 'failed') return false
+  const latestAttempt = invoice.processing_attempts.at(-1)
+  if (!latestAttempt || latestAttempt.status !== 'failed') return false
+
+  const code = latestAttempt.http_status_code
+  return code === null || code === 408 || code === 429 || (code >= 500 && code < 600)
+}
+
+function formatCountdown(totalSeconds: number): string {
+  const minutes = Math.floor(totalSeconds / 60)
+  const seconds = totalSeconds % 60
+  return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
+}
+
 function StatusBadge({ status }: { status: Invoice['status'] }) {
   const styles: Record<Invoice['status'], string> = {
     pending: 'border-amber-200 bg-amber-50 text-amber-800',
@@ -119,6 +172,374 @@ function StatusBadge({ status }: { status: Invoice['status'] }) {
       <span className="mr-1.5 size-1.5 rounded-full bg-current" />
       {status}
     </Badge>
+  )
+}
+
+function InvoiceDetailsView({
+  token,
+  invoiceId,
+  onBack,
+  onLogout,
+}: {
+  token: string
+  invoiceId: number
+  onBack: () => void
+  onLogout: () => void
+}) {
+  const [invoice, setInvoice] = useState<InvoiceDetail | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [retrying, setRetrying] = useState(false)
+  const [error, setError] = useState('')
+  const [notice, setNotice] = useState('')
+  const [currentTime, setCurrentTime] = useState(0)
+
+  const handleRequestError = useCallback(
+    (requestError: unknown) => {
+      setError(errorText(requestError))
+      if (requestError instanceof ApiError && requestError.status === 401) {
+        onLogout()
+      }
+    },
+    [onLogout],
+  )
+
+  useEffect(() => {
+    let active = true
+    api
+      .getInvoice(token, invoiceId)
+      .then(({ data }) => {
+        if (active) {
+          setInvoice(data)
+          setCurrentTime(Date.now())
+          setError('')
+        }
+      })
+      .catch((requestError: unknown) => {
+        if (active) handleRequestError(requestError)
+      })
+      .finally(() => {
+        if (active) setLoading(false)
+      })
+
+    return () => {
+      active = false
+    }
+  }, [handleRequestError, invoiceId, token])
+
+  useEffect(() => {
+    if (!invoice || (invoice.status !== 'pending' && invoice.status !== 'processing')) {
+      return
+    }
+
+    const timer = window.setInterval(() => {
+      api
+        .getInvoice(token, invoiceId)
+        .then(({ data }) => {
+          setInvoice(data)
+          setError('')
+        })
+        .catch(handleRequestError)
+    }, 5000)
+
+    return () => window.clearInterval(timer)
+  }, [handleRequestError, invoice, invoiceId, token])
+
+  useEffect(() => {
+    if (!invoice?.retry_available_at) return
+
+    const timer = window.setInterval(() => setCurrentTime(Date.now()), 1000)
+    return () => window.clearInterval(timer)
+  }, [invoice?.retry_available_at])
+
+  async function retrySubmission() {
+    setRetrying(true)
+    setError('')
+    setNotice('')
+    try {
+      const { data } = await api.retryInvoice(token, invoiceId)
+      setInvoice(data)
+      setNotice('Retry queued. The status will update as the worker processes it.')
+    } catch (requestError) {
+      handleRequestError(requestError)
+    } finally {
+      setRetrying(false)
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="mx-auto max-w-5xl">
+        <Button variant="ghost" onClick={onBack} className="mb-5 -ml-2">
+          <ArrowLeft />
+          Back to invoices
+        </Button>
+        <div className="flex min-h-64 items-center justify-center gap-2 text-sm text-muted-foreground">
+          <LoaderCircle className="size-4 animate-spin" />
+          Loading invoice details…
+        </div>
+      </div>
+    )
+  }
+
+  if (!invoice) {
+    return (
+      <div className="mx-auto max-w-5xl">
+        <Button variant="ghost" onClick={onBack} className="mb-5 -ml-2">
+          <ArrowLeft />
+          Back to invoices
+        </Button>
+        <Alert variant="destructive">
+          <CircleAlert />
+          <AlertTitle>Unable to load invoice</AlertTitle>
+          <AlertDescription>{error || 'Invoice details are unavailable.'}</AlertDescription>
+        </Alert>
+      </div>
+    )
+  }
+
+  const latestAttempt = invoice.processing_attempts.at(-1)
+  const canRetry = canRetryInvoice(invoice)
+  const retryAvailableAt = invoice.retry_available_at
+    ? Date.parse(invoice.retry_available_at)
+    : Number.NaN
+  const cooldownRemaining = currentTime > 0 && Number.isFinite(retryAvailableAt)
+    ? Math.max(0, Math.ceil((retryAvailableAt - currentTime) / 1000))
+    : null
+  const retryReady = canRetry && cooldownRemaining !== null && cooldownRemaining === 0
+
+  return (
+    <div className="mx-auto max-w-5xl">
+      <Button variant="ghost" onClick={onBack} className="mb-5 -ml-2">
+        <ArrowLeft />
+        Back to invoices
+      </Button>
+
+      <div className="mb-7 flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
+        <div>
+          <p className="text-sm font-medium text-primary">Invoice details</p>
+          <h1 className="mt-1 text-3xl font-semibold tracking-tight">{invoice.invoice_number}</h1>
+          <p className="mt-2 text-muted-foreground">
+            Created {formatDateTime(invoice.created_at)}
+          </p>
+        </div>
+        {canRetry && (
+          <div className="flex flex-col items-start gap-1 sm:items-end">
+            <Button
+              onClick={() => void retrySubmission()}
+              disabled={retrying || !retryReady}
+            >
+              {retrying ? (
+                <LoaderCircle className="animate-spin" />
+              ) : cooldownRemaining && cooldownRemaining > 0 ? (
+                <Clock3 />
+              ) : (
+                <RefreshCw />
+              )}
+              {retrying
+                ? 'Queueing retry…'
+                : cooldownRemaining === null
+                  ? 'Checking retry availability…'
+                  : cooldownRemaining > 0
+                    ? `Retry available in ${formatCountdown(cooldownRemaining)}`
+                    : 'Retry submission'}
+            </Button>
+            {cooldownRemaining === null && (
+              <p className="text-xs text-muted-foreground">
+                Checking the server retry cooldown.
+              </p>
+            )}
+          </div>
+        )}
+      </div>
+
+      {error && (
+        <Alert variant="destructive" className="mb-5">
+          <CircleAlert />
+          <AlertTitle>Request failed</AlertTitle>
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
+      {notice && (
+        <Alert className="mb-5 border-sky-200 bg-sky-50 text-sky-900">
+          <Clock3 />
+          <AlertTitle>Retry queued</AlertTitle>
+          <AlertDescription>{notice}</AlertDescription>
+        </Alert>
+      )}
+
+      <Card className="mb-6">
+        <CardContent className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center">
+          <div
+            className={`grid size-11 shrink-0 place-items-center rounded-full ${
+              invoice.status === 'submitted'
+                ? 'bg-emerald-100 text-emerald-700'
+                : invoice.status === 'failed'
+                  ? 'bg-rose-100 text-rose-700'
+                  : 'bg-sky-100 text-sky-700'
+            }`}
+          >
+            {invoice.status === 'submitted' ? (
+              <CircleCheck />
+            ) : invoice.status === 'failed' ? (
+              <CircleX />
+            ) : (
+              <LoaderCircle className={invoice.status === 'processing' ? 'animate-spin' : ''} />
+            )}
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <StatusBadge status={invoice.status} />
+              <p className="font-medium">{statusMessage(invoice.status)}</p>
+            </div>
+            {invoice.status === 'failed' && latestAttempt?.error_message && (
+              <p className="mt-1 text-sm text-muted-foreground">
+                Latest error: {latestAttempt.error_message}
+              </p>
+            )}
+            {invoice.status === 'failed' && !canRetry && (
+              <p className="mt-1 text-sm text-muted-foreground">
+                This failure is not eligible for retry. A retry is available only for transient
+                submission failures.
+              </p>
+            )}
+            {canRetry && cooldownRemaining !== null && cooldownRemaining > 0 && (
+              <p className="mt-1 text-sm text-muted-foreground">
+                To avoid repeatedly submitting while the service is unavailable, wait until the
+                cooldown ends before trying again.
+              </p>
+            )}
+          </div>
+          {(invoice.status === 'pending' || invoice.status === 'processing') && (
+            <p className="text-xs text-muted-foreground">Updates automatically</p>
+          )}
+        </CardContent>
+      </Card>
+
+      <div className="mb-6 grid gap-6 lg:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle>Invoice summary</CardTitle>
+            <CardDescription>Invoice and customer information</CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-x-6 gap-y-4 sm:grid-cols-2">
+            <DetailValue label="Invoice date" value={formatDate(invoice.invoice_date)} />
+            <DetailValue label="Currency" value={invoice.currency} />
+            <DetailValue label="Seller" value={invoice.seller.name} />
+            <DetailValue label="Seller tax ID" value={invoice.seller.tax_id || '—'} />
+            <DetailValue label="Customer" value={invoice.customer.name} />
+            <DetailValue label="Customer email" value={invoice.customer.email || '—'} />
+            <DetailValue label="Customer tax ID" value={invoice.customer.tax_id || '—'} />
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Totals</CardTitle>
+            <CardDescription>Calculated by the server</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="flex justify-between text-sm">
+              <span className="text-muted-foreground">Subtotal</span>
+              <span>{formatCurrency(invoice.subtotal, invoice.currency)}</span>
+            </div>
+            <div className="flex justify-between text-sm">
+              <span className="text-muted-foreground">Tax</span>
+              <span>{formatCurrency(invoice.tax_amount, invoice.currency)}</span>
+            </div>
+            <div className="flex justify-between border-t pt-3 font-semibold">
+              <span>Total</span>
+              <span>{formatCurrency(invoice.total_amount, invoice.currency)}</span>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      <Card className="mb-6">
+        <CardHeader>
+          <CardTitle>Line items</CardTitle>
+          <CardDescription>{invoice.items.length} item(s) on this invoice</CardDescription>
+        </CardHeader>
+        <CardContent className="px-0 pt-0">
+          <Table>
+            <TableHeader>
+              <TableRow className="bg-muted/30 hover:bg-muted/30">
+                <TableHead className="pl-6">Description</TableHead>
+                <TableHead className="text-right">Quantity</TableHead>
+                <TableHead className="text-right">Unit price</TableHead>
+                <TableHead className="text-right">Tax</TableHead>
+                <TableHead className="pr-6 text-right">Line total</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {invoice.items.map((item) => (
+                <TableRow key={item.id}>
+                  <TableCell className="pl-6 font-medium">{item.description}</TableCell>
+                  <TableCell className="text-right">{item.quantity}</TableCell>
+                  <TableCell className="text-right">
+                    {formatCurrency(item.unit_price, invoice.currency)}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    {formatCurrency(item.tax_amount, invoice.currency)}
+                  </TableCell>
+                  <TableCell className="pr-6 text-right font-medium">
+                    {formatCurrency(item.line_total, invoice.currency)}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Submission history</CardTitle>
+          <CardDescription>
+            {invoice.processing_attempts.length
+              ? 'Every attempt made to submit this invoice.'
+              : 'No submission attempts have started yet.'}
+          </CardDescription>
+        </CardHeader>
+        {invoice.processing_attempts.length > 0 && (
+          <CardContent className="px-0 pt-0">
+            <Table>
+              <TableHeader>
+                <TableRow className="bg-muted/30 hover:bg-muted/30">
+                  <TableHead className="pl-6">Attempt</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Started</TableHead>
+                  <TableHead>HTTP</TableHead>
+                  <TableHead className="pr-6">Result</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {invoice.processing_attempts.map((attempt) => (
+                  <TableRow key={attempt.attempt_number}>
+                    <TableCell className="pl-6 font-medium">#{attempt.attempt_number}</TableCell>
+                    <TableCell className="capitalize">{attempt.status}</TableCell>
+                    <TableCell>{formatDateTime(attempt.started_at)}</TableCell>
+                    <TableCell>{attempt.http_status_code ?? '—'}</TableCell>
+                    <TableCell className="max-w-sm whitespace-normal pr-6 text-muted-foreground">
+                      {attempt.error_message ||
+                        (attempt.status === 'succeeded' ? 'Successfully submitted.' : '—')}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        )}
+      </Card>
+    </div>
+  )
+}
+
+function DetailValue({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <p className="text-xs text-muted-foreground">{label}</p>
+      <p className="mt-1 break-words text-sm font-medium">{value}</p>
+    </div>
   )
 }
 
@@ -606,6 +1027,8 @@ function InvoiceDashboard({
   const [page, setPage] = useState<InvoicePage | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [selectedInvoiceId, setSelectedInvoiceId] = useState<number | null>(null)
+  const [refreshKey, setRefreshKey] = useState(0)
 
   useEffect(() => {
     let active = true
@@ -628,7 +1051,7 @@ function InvoiceDashboard({
     return () => {
       active = false
     }
-  }, [filters, onLogout, token])
+  }, [filters, onLogout, refreshKey, token])
 
   const invoices = page?.data ?? []
   const pageTotal = invoices.reduce((sum, invoice) => sum + Number(invoice.total_amount), 0)
@@ -636,6 +1059,46 @@ function InvoiceDashboard({
   const inProgressCount = invoices.filter(
     (invoice) => invoice.status === 'pending' || invoice.status === 'processing',
   ).length
+
+  if (selectedInvoiceId !== null) {
+    return (
+      <div className="min-h-screen bg-slate-50/70">
+        <header className="sticky top-0 z-10 border-b bg-white/95 backdrop-blur">
+          <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
+            <div className="flex items-center gap-3">
+              <div className="grid size-9 place-items-center rounded-lg bg-slate-950 text-white">
+                <FileText className="size-4" />
+              </div>
+              <span className="text-lg font-semibold tracking-tight">tubo</span>
+              <span className="hidden border-l pl-3 text-sm text-muted-foreground sm:inline">
+                Invoices
+              </span>
+            </div>
+            <div className="flex items-center gap-3">
+              <span className="hidden text-sm text-muted-foreground sm:inline">{userName}</span>
+              <Button variant="ghost" size="sm" onClick={onLogout} aria-label="Sign out">
+                <LogOut />
+                <span className="hidden sm:inline">Sign out</span>
+              </Button>
+            </div>
+          </div>
+        </header>
+        <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+          <InvoiceDetailsView
+            token={token}
+            invoiceId={selectedInvoiceId}
+            onBack={() => {
+              setSelectedInvoiceId(null)
+              setLoading(true)
+              setError('')
+              setRefreshKey((current) => current + 1)
+            }}
+            onLogout={onLogout}
+          />
+        </main>
+      </div>
+    )
+  }
 
   function applyFilters(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -831,12 +1294,13 @@ function InvoiceDashboard({
                   <TableHead>Date</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead className="pr-6 text-right">Total</TableHead>
+                  <TableHead className="pr-6 text-right">Action</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {loading ? (
                   <TableRow>
-                    <TableCell colSpan={5} className="h-40 text-center">
+                    <TableCell colSpan={6} className="h-40 text-center">
                       <span className="inline-flex items-center gap-2 text-muted-foreground">
                         <LoaderCircle className="size-4 animate-spin" />
                         Loading invoices…
@@ -859,16 +1323,31 @@ function InvoiceDashboard({
                         {formatDate(invoice.invoice_date)}
                       </TableCell>
                       <TableCell>
-                        <StatusBadge status={invoice.status} />
+                        <div className="space-y-1">
+                          <StatusBadge status={invoice.status} />
+                          <p className="max-w-56 text-xs text-muted-foreground">
+                            {statusMessage(invoice.status)}
+                          </p>
+                        </div>
                       </TableCell>
                       <TableCell className="pr-6 text-right font-medium tabular-nums">
                         {formatCurrency(invoice.total_amount, invoice.currency)}
+                      </TableCell>
+                      <TableCell className="pr-6 text-right">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setSelectedInvoiceId(invoice.id)}
+                        >
+                          <Eye />
+                          View details
+                        </Button>
                       </TableCell>
                     </TableRow>
                   ))
                 ) : (
                   <TableRow>
-                    <TableCell colSpan={5} className="h-52">
+                    <TableCell colSpan={6} className="h-52">
                       <div className="flex flex-col items-center justify-center text-center">
                         <div className="mb-3 grid size-11 place-items-center rounded-xl bg-muted">
                           <FileText className="size-5 text-muted-foreground" />

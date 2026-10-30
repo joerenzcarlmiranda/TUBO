@@ -9,6 +9,7 @@ use App\Models\Company;
 use App\Models\Invoice;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Queue;
 use Tests\TestCase;
@@ -68,7 +69,10 @@ class RetryInvoiceSubmissionTest extends TestCase
         $this->withToken($token)
             ->postJson("/api/v1/invoices/{$invoice->id}/retry")
             ->assertConflict()
-            ->assertJsonPath('message', 'This invoice is not in a retryable failed state.');
+            ->assertJsonPath(
+                'message',
+                'This invoice cannot be retried right now. Check its status, failure type, and retry cooldown.',
+            );
 
         Queue::assertPushed(ProcessInvoiceSubmission::class, 1);
         $this->assertDatabaseCount('invoice_processing_attempts', 1);
@@ -83,10 +87,77 @@ class RetryInvoiceSubmissionTest extends TestCase
         $this->withToken($token)
             ->postJson("/api/v1/invoices/{$invoice->id}/retry")
             ->assertConflict()
-            ->assertJsonPath('message', 'This invoice is not in a retryable failed state.');
+            ->assertJsonPath(
+                'message',
+                'This invoice cannot be retried right now. Check its status, failure type, and retry cooldown.',
+            );
 
         Queue::assertNothingPushed();
         $this->assertSame(InvoiceStatus::Failed, $invoice->refresh()->status);
+    }
+
+    public function test_non_http_status_above_server_error_range_cannot_be_retried(): void
+    {
+        $company = Company::query()->create(['legal_name' => 'Company A']);
+        $invoice = $this->createFailedInvoice($company, 600);
+        $token = $this->authenticate($this->createCompanyUser($company));
+
+        $this->withToken($token)
+            ->postJson("/api/v1/invoices/{$invoice->id}/retry")
+            ->assertConflict()
+            ->assertJsonPath(
+                'message',
+                'This invoice cannot be retried right now. Check its status, failure type, and retry cooldown.',
+            );
+
+        Queue::assertNothingPushed();
+        $this->assertSame(InvoiceStatus::Failed, $invoice->refresh()->status);
+    }
+
+    public function test_manual_retry_is_rejected_until_five_minute_cooldown_expires(): void
+    {
+        $this->travelTo(Carbon::parse('2026-10-29 12:10:00'));
+        $company = Company::query()->create(['legal_name' => 'Company A']);
+        $invoice = $this->createFailedInvoice($company, 503);
+        $invoice->processingAttempts()->first()->update([
+            'started_at' => now()->subMinutes(4)->subSeconds(30),
+            'finished_at' => now()->subMinutes(4),
+        ]);
+        $token = $this->authenticate($this->createCompanyUser($company));
+
+        $this->withToken($token)
+            ->postJson("/api/v1/invoices/{$invoice->id}/retry")
+            ->assertConflict();
+
+        $this->withToken($token)
+            ->getJson("/api/v1/invoices/{$invoice->id}")
+            ->assertOk()
+            ->assertJsonPath(
+                'data.retry_available_at',
+                now()->addMinute()->toIso8601String(),
+            );
+
+        Queue::assertNothingPushed();
+        $this->assertSame(InvoiceStatus::Failed, $invoice->refresh()->status);
+    }
+
+    public function test_manual_retry_is_allowed_after_cooldown_expires(): void
+    {
+        $this->travelTo(Carbon::parse('2026-10-29 12:10:00'));
+        $company = Company::query()->create(['legal_name' => 'Company A']);
+        $invoice = $this->createFailedInvoice($company, 503);
+        $invoice->processingAttempts()->first()->update([
+            'started_at' => now()->subMinutes(5)->subSeconds(30),
+            'finished_at' => now()->subMinutes(5),
+        ]);
+        $token = $this->authenticate($this->createCompanyUser($company));
+
+        $this->withToken($token)
+            ->postJson("/api/v1/invoices/{$invoice->id}/retry")
+            ->assertAccepted()
+            ->assertJsonPath('data.status', InvoiceStatus::Pending->value);
+
+        Queue::assertPushed(ProcessInvoiceSubmission::class, 1);
     }
 
     public function test_invoice_from_another_company_cannot_be_retried(): void
@@ -176,8 +247,8 @@ class RetryInvoiceSubmissionTest extends TestCase
         $invoice->processingAttempts()->create([
             'attempt_number' => 1,
             'status' => InvoiceProcessingAttemptStatus::Failed,
-            'started_at' => now()->subMinutes(2),
-            'finished_at' => now()->subMinute(),
+            'started_at' => now()->subMinutes(7),
+            'finished_at' => now()->subMinutes(6),
             'http_status_code' => $httpStatusCode,
             'response_body' => $httpStatusCode === 400
                 ? '{"message":"Invalid invoice."}'

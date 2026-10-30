@@ -19,7 +19,7 @@ class InvoiceRetryController extends Controller
 
         if ($retriedInvoice === null) {
             return response()->json([
-                'message' => 'This invoice is not in a retryable failed state.',
+                'message' => 'This invoice cannot be retried right now. Check its status, failure type, and retry cooldown.',
             ], 409);
         }
 

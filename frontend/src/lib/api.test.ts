@@ -112,4 +112,23 @@ describe('invoice API client', () => {
       errors: { invoice_number: ['The invoice number has already been taken.'] },
     })
   })
+
+  it('uses the invoice detail and retry endpoints', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(
+        new Response(JSON.stringify({ data: { id: 8 } }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      )
+    vi.stubGlobal('fetch', fetchMock)
+
+    await api.getInvoice('jwt-token', 8)
+    await api.retryInvoice('jwt-token', 8)
+
+    expect(fetchMock.mock.calls[0]?.[0]).toContain('/v1/invoices/8')
+    expect(fetchMock.mock.calls[1]?.[0]).toContain('/v1/invoices/8/retry')
+    expect(fetchMock.mock.calls[1]?.[1]).toMatchObject({ method: 'POST' })
+  })
 })

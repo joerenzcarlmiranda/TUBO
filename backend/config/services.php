@@ -41,6 +41,7 @@ return [
         'url' => env('GOVERNMENT_API_URL', 'https://government.example.test/government-api'),
         'timeout' => (int) env('GOVERNMENT_API_TIMEOUT', 30),
         'processing_lease_seconds' => (int) env('GOVERNMENT_PROCESSING_LEASE_SECONDS', 60),
+        'manual_retry_cooldown_minutes' => (int) env('GOVERNMENT_MANUAL_RETRY_COOLDOWN_MINUTES', 5),
     ],
 
 ];
