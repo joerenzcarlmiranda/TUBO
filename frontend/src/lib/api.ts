@@ -16,6 +16,38 @@ export type Invoice = {
   status: InvoiceStatus
 }
 
+export type InvoiceDetail = Invoice & {
+  seller: {
+    name: string
+    tax_id: string | null
+  }
+  customer: {
+    name: string
+    email: string | null
+    tax_id: string | null
+  }
+  items: {
+    id: number
+    position: number
+    description: string
+    quantity: string
+    unit_price: string
+    tax_rate: string
+    tax_amount: string
+    line_total: string
+  }[]
+  processing_attempts: {
+    attempt_number: number
+    status: 'processing' | 'succeeded' | 'failed'
+    started_at: string
+    finished_at: string | null
+    http_status_code: number | null
+    error_message: string | null
+  }[]
+  retry_available_at: string | null
+  created_at: string
+}
+
 export type InvoiceItemInput = {
   description: string
   quantity: string
@@ -155,6 +187,17 @@ export const api = {
     if (filters.invoice_date_from) params.set('invoice_date_from', filters.invoice_date_from)
     if (filters.invoice_date_to) params.set('invoice_date_to', filters.invoice_date_to)
     return request<InvoicePage>(`/v1/invoices?${params.toString()}`, { token })
+  },
+
+  getInvoice(token: string, invoiceId: number) {
+    return request<{ data: InvoiceDetail }>(`/v1/invoices/${invoiceId}`, { token })
+  },
+
+  retryInvoice(token: string, invoiceId: number) {
+    return request<{ data: InvoiceDetail }>(`/v1/invoices/${invoiceId}/retry`, {
+      method: 'POST',
+      token,
+    })
   },
 
   createInvoice(token: string, invoice: CreateInvoiceInput) {

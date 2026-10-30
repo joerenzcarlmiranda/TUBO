@@ -157,10 +157,14 @@ The endpoint requires a JWT bearer token from the invoice's company. It
 responds with `202 Accepted` when a retry is queued. Only a failed invoice
 whose latest attempt ended in a connection/timeout error, HTTP 408, 429, or
 5xx is eligible; permanent 4xx rejections return `409 Conflict` and must be
-corrected rather than resubmitted. The status transition is made under a
-database lock, so repeated or concurrent retry requests cannot queue multiple
-retries. Every run appends a numbered attempt record rather than replacing
-previous attempts.
+corrected rather than resubmitted. Manual retries have a five-minute cooldown
+after the latest failed attempt by default; configure
+`GOVERNMENT_MANUAL_RETRY_COOLDOWN_MINUTES` to change it. The API enforces the
+cooldown and exposes `retry_available_at` in invoice details. The detail view
+shows a countdown and enables retry when the cooldown ends. The status
+transition is made under a database lock, so repeated or concurrent retry
+requests cannot queue multiple retries. Every run appends a numbered attempt
+record rather than replacing previous attempts.
 
 ### Versioned invoice read API
 
@@ -198,6 +202,13 @@ example is `http://127.0.0.1:8000/api`). The frontend provides a sign-in screen
 for provisioned company accounts; public registration is not available. JWTs
 are kept in session storage and protected API requests send them as bearer
 tokens. Start the backend and queue worker before creating invoices.
+
+Select **View details** on an invoice to review its line items, current
+submission status, and attempt history. Pending or processing invoices refresh
+their status automatically while the details view is open. A failed invoice
+offers **Retry submission** only when its latest failure was transient
+(connection/timeout, HTTP 408, 429, or 5xx); permanent rejections need a
+corrected invoice rather than another retry.
 
 Vite prints the local frontend URL when the development server starts.
 

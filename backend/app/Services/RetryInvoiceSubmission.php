@@ -27,6 +27,18 @@ class RetryInvoiceSubmission
                 return null;
             }
 
+            $cooldownMinutes = (int) config(
+                'services.government.manual_retry_cooldown_minutes',
+                5,
+            );
+            $retryAvailableAt = ($latestAttempt->finished_at ?? $latestAttempt->started_at)
+                ->copy()
+                ->addMinutes($cooldownMinutes);
+
+            if (now()->lt($retryAvailableAt)) {
+                return null;
+            }
+
             $invoice->update(['status' => InvoiceStatus::Pending]);
 
             ProcessInvoiceSubmission::dispatch($invoice->id)->afterCommit();

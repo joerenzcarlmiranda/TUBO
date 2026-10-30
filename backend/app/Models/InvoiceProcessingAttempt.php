@@ -38,6 +38,6 @@ class InvoiceProcessingAttempt extends Model
             && ($this->http_status_code === null
                 || $this->http_status_code === 408
                 || $this->http_status_code === 429
-                || $this->http_status_code >= 500);
+                || ($this->http_status_code >= 500 && $this->http_status_code < 600));
     }
 }
